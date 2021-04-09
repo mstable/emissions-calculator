@@ -4,6 +4,8 @@ import numpy as np
 from datetime import datetime, timedelta
 from enum import Enum
 
+from prices import get_btc_price
+
 # Percentage of mAsset emission that goes to feeders
 FEEDER_EMISSION_PCT = 0.80
 
@@ -18,7 +20,7 @@ PROTOCOL_URL = "https://api.thegraph.com/subgraphs/name/mstable/mstable-protocol
 FEEDER_POOL_URL = "https://api.thegraph.com/subgraphs/name/mstable/mstable-feeder-pools"
 
 example_text = """Example:
-python compute_emissions.py 2021-04-01 50000 100_000"""
+python compute_emissions.py 2021-04-01 100_000"""
 
 # Argument parser config
 parser = argparse.ArgumentParser(
@@ -29,11 +31,8 @@ parser.add_argument(
     "date", type=str,
     help="The emissions will be computed for the week preceding this date.")
 # parser.add_argument(
-#     "end_date", type=str,
-#     help="End date for the interval for which the stats will be computed.")
-parser.add_argument(
-    "btc_price", type=float,
-    help="BTC price at the end of the interval.")
+#     "btc_price", type=float,
+#     help="BTC price at the end of the interval.")
 parser.add_argument(
     "total_emission", type=float,
     help="Total emission for the interval.")
@@ -186,9 +185,15 @@ def get_vol(start_blk, end_blk, mode):
         final_vol[symbol] += float(i["cumulativeRedeemed"]["simple"]) / 2
         final_vol[symbol] += float(i["cumulativeSwapped"]["simple"])
 
+    symbols = list(set(list(initial_vol.keys())).union(set(list(final_vol.keys()))))
     volumes = {}
-    for symbol in initial_vol.keys():
-        volumes[symbol] = final_vol[symbol] - initial_vol[symbol]
+    for symbol in symbols:
+        if symbol in initial_vol and symbol in final_vol:
+            volumes[symbol] = final_vol[symbol] - initial_vol[symbol]
+        elif symbol not in initial_vol and symbol in final_vol:
+            volumes[symbol] = final_vol[symbol]
+        else:
+            volumes[symbol] = 0
 
     return volumes
 
@@ -210,18 +215,27 @@ def get_liq(start_blk, end_blk, mode):
     data = response.json()["data"]
 
     points = list(data.values())
-    n = len(points[0])
-    symbols = [i["token"]["symbol"] for i in points[0]]
-    result = {}
+    liq_array_dict = {}
 
-    for idx in range(n):
-        liq_array = [float(i[idx]["totalSupply"]["simple"]) for i in points]
-        result[symbols[idx]] = np.mean(liq_array)
+    for point in points:
+        for token_dict in point:
+            symbol = token_dict["token"]["symbol"]
+            if symbol not in liq_array_dict:
+                liq_array_dict[symbol] = []
+
+            liq_array_dict[symbol].append(
+                float(token_dict["totalSupply"]["simple"])
+            )
+
+    result = {}
+    for symbol, liq_array in liq_array_dict.items():
+        result[symbol] = np.mean(liq_array)
 
     return result
 
 def __main__():
     args = parser.parse_args()
+
 
     end_dt = iso_date_to_datetime(args.date)
     start_dt = end_dt - timedelta(days=7)
@@ -229,11 +243,16 @@ def __main__():
     if not start_dt.weekday() == end_dt.weekday() == 0:
         raise ValueError("Input dates are restricted to Mondays.")
 
+    # Get timestamps
     start_ts = datetime_to_timestamp(start_dt)
     end_ts = datetime_to_timestamp(end_dt)
 
+    # Get block numbers
     start_blk = get_block_number(start_ts)
     end_blk = get_block_number(end_ts)
+
+    print("Getting BTC price for %s"%(end_dt))
+    btc_price = get_btc_price(end_dt)
 
     print("Scraping mAsset volumes")
     masset_volumes = get_vol(start_blk, end_blk, Mode.MASSET)
@@ -247,8 +266,11 @@ def __main__():
     print("Scraping feeder pool liquidities")
     fp_liquidities = get_liq(start_blk, end_blk, Mode.FEEDER_POOL)
 
-    masset_symbols = list(masset_volumes.keys())
-    fp_symbols = list(fp_volumes.keys())
+    masset_symbols = symbols = list(
+        set(list(masset_volumes.keys())).union(set(list(masset_liquidities.keys()))))
+
+    fp_symbols = list(
+        set(list(fp_volumes.keys())).union(set(list(fp_liquidities.keys()))))
 
     masset_vol_arr = [masset_volumes[s] for s in masset_symbols]
     fp_vol_arr = [fp_volumes[s] for s in fp_symbols]
@@ -259,14 +281,14 @@ def __main__():
     for i in range(len(masset_symbols)):
         symbol = masset_symbols[i]
         if "BTC" in symbol:
-            masset_vol_arr[i] *= args.btc_price
-            masset_liq_arr[i] *= args.btc_price
+            masset_vol_arr[i] *= btc_price
+            masset_liq_arr[i] *= btc_price
 
     for i in range(len(fp_symbols)):
         symbol = fp_symbols[i]
         if "BTC" in symbol:
-            fp_vol_arr[i] *= args.btc_price
-            fp_liq_arr[i] *= args.btc_price
+            fp_vol_arr[i] *= btc_price
+            fp_liq_arr[i] *= btc_price
 
     ############################################
     # Using the logic from simple_heuristic.py #
@@ -289,6 +311,9 @@ def __main__():
     assert len(feeder_supplies) == len(feeder_volumes)
     m = len(masset_supplies)
     n = len(feeder_supplies)
+
+    if m == 0 or n == 0:
+        raise Exception("There needs to be at least 1 feeder pool and 1 mAsset.")
 
     vault_emission = total_emission * (1 - FEEDER_EMISSION_PCT)
     feeder_emission = total_emission * FEEDER_EMISSION_PCT
