@@ -1,4 +1,4 @@
-TOP_LEVEL_EMISSIONS = {
+TOP_LEVEL_SCHEDULE = {
     ###########################################################
     # 12,600,000 MTA to be emitted until next emission drop.  #
     ###########################################################
@@ -1596,7 +1596,12 @@ TOP_LEVEL_EMISSIONS = {
 
 }
 
-if __name__ == "__main__":
+def test_total_emission():
     total_emission = sum([sum(list(i.values())) for i in TOP_LEVEL_EMISSIONS.values()])
     print("Total emission:", total_emission)
     print("# weeks:", len(TOP_LEVEL_EMISSIONS))
+
+    assert abs(total_emission - 42_000_000) <= 1.
+
+if __name__ == "__main__":
+    test_total_emission()

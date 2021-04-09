@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 from prices import get_btc_price
+from top_level_schedule import TOP_LEVEL_SCHEDULE
 
 # Percentage of mAsset emission that goes to feeders
 FEEDER_EMISSION_PCT = 0.80
@@ -33,10 +34,9 @@ parser.add_argument(
 # parser.add_argument(
 #     "btc_price", type=float,
 #     help="BTC price at the end of the interval.")
-parser.add_argument(
-    "total_emission", type=float,
-    help="Total emission for the interval.")
-
+# parser.add_argument(
+#     "total_emission", type=float,
+#     help="Total emission for the interval.")
 
 class Mode(Enum):
     MASSET = 0
@@ -54,8 +54,12 @@ def get_block_number(unix_ts):
   }
 }"""%(unix_ts)
 
-    response = requests.post("https://api.thegraph.com/subgraphs/name/blocklytics/ethereum-blocks", json={'query': query})
-    blknum = int(response.json()["data"]["blocks"][0]["number"])
+    try:
+        response = requests.post("https://api.thegraph.com/subgraphs/name/blocklytics/ethereum-blocks", json={'query': query})
+        blknum = int(response.json()["data"]["blocks"][0]["number"])
+    except:
+        raise Exception("There was a problem for getting the block number for timestamp %d"%(unix_ts))
+
     return blknum
 
 def iso_date_to_datetime(date_str):
@@ -294,7 +298,9 @@ def __main__():
     # Using the logic from simple_heuristic.py #
     ############################################
 
-    total_emission = args.total_emission
+    total_emission = TOP_LEVEL_SCHEDULE[args.date]["pools"]
+
+    # total_emission = args.total_emission
 
     # Current pool sizes
     feeder_supplies = fp_liq_arr
@@ -331,6 +337,7 @@ def __main__():
     for supply, volume in zip(masset_supplies, masset_volumes):
         bonus_vault_factor.append(volume / supply**(1/4))
 
+    print("Total emission: %.2f MTA"%total_emission)
     print("Base emission to vaults: %.2f MTA each"%vault_base_emission)
     print("Base emission to feeder pools: %.2f MTA each"%feeder_base_emission)
 
@@ -343,7 +350,7 @@ def __main__():
 
         lur = masset_volumes[i] / masset_supplies[i]
 
-        print("%s vault - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"%(
+        print("%s vault - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.0f MTA"%(
             masset_symbols[i],
             masset_supplies[i] / 1e6,
             masset_volumes[i] / 1e6,
@@ -360,7 +367,7 @@ def __main__():
 
         lur = feeder_volumes[i] / feeder_supplies[i]
 
-        print("Feeder %s - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"%(
+        print("Feeder %s - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.0f MTA"%(
             fp_symbols[i],
             feeder_supplies[i] / 1e6,
             feeder_volumes[i] / 1e6,
