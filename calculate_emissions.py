@@ -31,9 +31,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "date", type=str,
     help="The emissions will be computed for the week preceding this date.")
-# parser.add_argument(
-#     "btc_price", type=float,
-#     help="BTC price at the end of the interval.")
+parser.add_argument(
+    "--offset", type=int, default=86400,
+    help="Offset (to the past) in seconds which data will be scraped. Default: 86400 (1 day)")
 # parser.add_argument(
 #     "total_emission", type=float,
 #     help="Total emission for the interval.")
@@ -247,16 +247,19 @@ def __main__():
     if not start_dt.weekday() == end_dt.weekday() == 0:
         raise ValueError("Input dates are restricted to Mondays.")
 
+    if not 0 <= args.offset <= 7 * 86400:
+        raise ValueError("Offset must be between 0 and 7 days.")
+
     # Get timestamps
     start_ts = datetime_to_timestamp(start_dt)
     end_ts = datetime_to_timestamp(end_dt)
 
     # Get block numbers
-    start_blk = get_block_number(start_ts)
-    end_blk = get_block_number(end_ts)
+    start_blk = get_block_number(start_ts - args.offset)
+    end_blk = get_block_number(end_ts - args.offset)
 
     print("Getting BTC price for %s"%(end_dt))
-    btc_price = get_btc_price(end_dt)
+    btc_price = get_btc_price(end_dt - timedelta(seconds=args.offset))
 
     print("Scraping mAsset volumes")
     masset_volumes = get_vol(start_blk, end_blk, Mode.MASSET)
@@ -298,9 +301,9 @@ def __main__():
     # Using the logic from simple_heuristic.py #
     ############################################
 
-    total_emission = TOP_LEVEL_SCHEDULE[args.date]["pools"]
-
-    # total_emission = args.total_emission
+    top_level_dict = TOP_LEVEL_SCHEDULE[args.date]
+    pools_emission = top_level_dict["pools"]
+    total_emission = sum(top_level_dict.values())
 
     # Current pool sizes
     feeder_supplies = fp_liq_arr
@@ -321,8 +324,8 @@ def __main__():
     if m == 0 or n == 0:
         raise Exception("There needs to be at least 1 feeder pool and 1 mAsset.")
 
-    vault_emission = total_emission * (1 - FEEDER_EMISSION_PCT)
-    feeder_emission = total_emission * FEEDER_EMISSION_PCT
+    vault_emission = pools_emission * (1 - FEEDER_EMISSION_PCT)
+    feeder_emission = pools_emission * FEEDER_EMISSION_PCT
 
     feeder_base_emission = feeder_emission * BASE_FEEDER_EMISSION_PCT / n
     vault_base_emission = vault_emission * BASE_VAULT_EMISSION_PCT / m
@@ -337,7 +340,20 @@ def __main__():
     for supply, volume in zip(masset_supplies, masset_volumes):
         bonus_vault_factor.append(volume / supply**(1/4))
 
-    print("Total emission: %.2f MTA"%total_emission)
+    print()
+    print("Here are the weekly emissions to be paid out on %s"%(args.date))
+    print("On-chain data has been scraped with %g day offset"%(args.offset / 86400))
+    print("Total emission: %.2f MTA"%(total_emission))
+    print("Emission to native pools: %.2f MTA"%(pools_emission))
+
+    if "staking" in top_level_dict:
+        print("Emission to staking: %.2f MTA"%(top_level_dict["staking"]))
+
+    if "MTA/WETH" in top_level_dict:
+        print("Emission to MTA/WETH pool: %.2f MTA"%(top_level_dict["MTA/WETH"]))
+
+    print("BTC price: %.2f USD"%(btc_price))
+
     print("Base emission to vaults: %.2f MTA each"%vault_base_emission)
     print("Base emission to feeder pools: %.2f MTA each"%feeder_base_emission)
 
@@ -350,7 +366,7 @@ def __main__():
 
         lur = masset_volumes[i] / masset_supplies[i]
 
-        print("%s vault - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.0f MTA"%(
+        print("%s vault - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"%(
             masset_symbols[i],
             masset_supplies[i] / 1e6,
             masset_volumes[i] / 1e6,
@@ -367,7 +383,7 @@ def __main__():
 
         lur = feeder_volumes[i] / feeder_supplies[i]
 
-        print("Feeder %s - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.0f MTA"%(
+        print("Feeder %s - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"%(
             fp_symbols[i],
             feeder_supplies[i] / 1e6,
             feeder_volumes[i] / 1e6,
@@ -375,7 +391,7 @@ def __main__():
             total_feeder_emission,
         ))
 
-    assert abs(vault_emission + sum(feeder_emissions) - total_emission) <= 1e-5
+    assert abs(vault_emission + sum(feeder_emissions) - pools_emission) <= 1e-5
 
 if __name__ == "__main__":
     __main__()
