@@ -1,8 +1,9 @@
 name: Calculate weekly emissions
 
+# Run at 06:00 on every Sunday
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 6 * * */7'
 
 jobs:
   build:
