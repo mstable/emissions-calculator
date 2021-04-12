@@ -1,245 +1,36 @@
 import argparse
 import requests
-import numpy as np
-from datetime import datetime, timedelta
-from enum import Enum
 
-from prices import get_btc_price
+from scrape import *
 from top_level_schedule import TOP_LEVEL_SCHEDULE
 
-# Percentage of mAsset emission that goes to feeders
-FEEDER_EMISSION_PCT = 0.80
-
-WEIGHTED_AVERAGE_SAMPLES = 500
-
-# Base emission that gets equally distributed to feeders
-BASE_FEEDER_EMISSION_PCT = 0.20
-BASE_VAULT_EMISSION_PCT = 0.50
-
-# Subgraph URLs
-PROTOCOL_URL = "https://api.thegraph.com/subgraphs/name/mstable/mstable-protocol"
-FEEDER_POOL_URL = "https://api.thegraph.com/subgraphs/name/mstable/mstable-feeder-pools"
 
 example_text = """Example:
 python compute_emissions.py 2021-04-01 100_000"""
 
 # Argument parser config
 parser = argparse.ArgumentParser(
-    epilog=example_text,
-    formatter_class=argparse.RawDescriptionHelpFormatter)
+    epilog=example_text, formatter_class=argparse.RawDescriptionHelpFormatter
+)
 
 parser.add_argument(
-    "date", type=str,
-    help="The emissions will be computed for the week preceding this date.")
+    "date",
+    type=str,
+    help="The emissions will be computed for the week preceding this date.",
+)
 parser.add_argument(
-    "--offset", type=int, default=86400,
-    help="Offset (to the past) in seconds which data will be scraped. Default: 86400 (1 day)")
+    "--offset",
+    type=int,
+    default=86400,
+    help="Offset (to the past) in seconds which data will be scraped. Default: 86400 (1 day)",
+)
 # parser.add_argument(
 #     "total_emission", type=float,
 #     help="Total emission for the interval.")
 
-class Mode(Enum):
-    MASSET = 0
-    FEEDER_POOL = 1
-
-
-def get_block_number(unix_ts):
-    "Get the block number corresponding to a UNIX timestamp"
-    query = """
-{
-  blocks(first: 1, orderBy: timestamp, orderDirection: asc, where: {timestamp_gt: "%d"}) {
-    id
-    number
-    timestamp
-  }
-}"""%(unix_ts)
-
-    try:
-        response = requests.post("https://api.thegraph.com/subgraphs/name/blocklytics/ethereum-blocks", json={'query': query})
-        blknum = int(response.json()["data"]["blocks"][0]["number"])
-    except:
-        raise Exception("There was a problem for getting the block number for timestamp %d"%(unix_ts))
-
-    return blknum
-
-def iso_date_to_datetime(date_str):
-    "Convert ISO date to Python datetime object"
-    dt = datetime.strptime(date_str, '%Y-%m-%d')
-    return dt
-
-def datetime_to_timestamp(dt):
-    "Convert datetime to UNIX timestamp"
-    timestamp = int((dt - datetime(1970, 1, 1)).total_seconds())
-    return timestamp
-
-def get_vol_query(start_ts, end_ts, mode):
-    "Get the query for scraping volumes from the subgraph"
-
-    if mode == Mode.MASSET:
-        schema = "massets"
-    elif mode == Mode.FEEDER_POOL:
-        schema = "feederPools"
-    else:
-        raise ValueError
-
-    result = """
-{
-  start: %s(block: { number:%d }) {
-    id
-    token	{
-      symbol
-    }
-    cumulativeMinted {
-      simple
-    }
-    cumulativeSwapped {
-      simple
-    }
-    cumulativeRedeemed {
-      simple
-    }
-  }
-  end: %s(block: { number:%d }) {
-    id
-    token	{
-      symbol
-    }
-    cumulativeMinted {
-      simple
-    }
-    cumulativeSwapped {
-      simple
-    }
-    cumulativeRedeemed {
-      simple
-    }
-  }
-}"""%(schema, start_ts, schema, end_ts)
-
-    return result
-
-
-def get_liq_query(start_blk, end_blk, mode):
-    "Get the query for scraping liquidities from the subgraph"
-    if mode == Mode.MASSET:
-        schema = "massets"
-    elif mode == Mode.FEEDER_POOL:
-        schema = "feederPools"
-    else:
-        raise ValueError
-
-    numbers = np.linspace(
-        start_blk,
-        end_blk,
-        min(WEIGHTED_AVERAGE_SAMPLES, end_blk - start_blk),
-        dtype=int,
-    )
-
-    query = "{\n"
-
-    for number in numbers:
-        query += """
-  t%d: %s(block:{number: %d}) {
-    id
-    token {
-      symbol
-    }
-    totalSupply {
-      simple
-    }
-  }"""%(number, schema, number)
-
-    query += "\n}"
-    return query
-
-def get_vol(start_blk, end_blk, mode):
-    query = get_vol_query(start_blk, end_blk, mode)
-
-    if mode == Mode.MASSET:
-        url = PROTOCOL_URL
-    elif mode == Mode.FEEDER_POOL:
-        url = FEEDER_POOL_URL
-    else:
-        raise ValueError
-
-    response = requests.post(
-        url,
-        json={'query': query}
-    )
-
-    data = response.json()["data"]
-
-    start_data = data["start"]
-    end_data = data["end"]
-
-    initial_vol = {}
-    final_vol = {}
-
-    for i in start_data:
-        symbol = i["token"]["symbol"]
-        initial_vol[symbol] = 0
-        initial_vol[symbol] += float(i["cumulativeMinted"]["simple"]) / 2
-        initial_vol[symbol] += float(i["cumulativeRedeemed"]["simple"]) / 2
-        initial_vol[symbol] += float(i["cumulativeSwapped"]["simple"])
-
-    for i in end_data:
-        symbol = i["token"]["symbol"]
-        final_vol[symbol] = 0
-        final_vol[symbol] += float(i["cumulativeMinted"]["simple"]) / 2
-        final_vol[symbol] += float(i["cumulativeRedeemed"]["simple"]) / 2
-        final_vol[symbol] += float(i["cumulativeSwapped"]["simple"])
-
-    symbols = list(set(list(initial_vol.keys())).union(set(list(final_vol.keys()))))
-    volumes = {}
-    for symbol in symbols:
-        if symbol in initial_vol and symbol in final_vol:
-            volumes[symbol] = final_vol[symbol] - initial_vol[symbol]
-        elif symbol not in initial_vol and symbol in final_vol:
-            volumes[symbol] = final_vol[symbol]
-        else:
-            volumes[symbol] = 0
-
-    return volumes
-
-
-def get_liq(start_blk, end_blk, mode):
-    query = get_liq_query(start_blk, end_blk, mode)
-
-    if mode == Mode.MASSET:
-        url = PROTOCOL_URL
-    elif mode == Mode.FEEDER_POOL:
-        url = FEEDER_POOL_URL
-    else:
-        raise ValueError
-
-    response = requests.post(
-        url,
-        json={'query': query}
-    )
-    data = response.json()["data"]
-
-    points = list(data.values())
-    liq_array_dict = {}
-
-    for point in points:
-        for token_dict in point:
-            symbol = token_dict["token"]["symbol"]
-            if symbol not in liq_array_dict:
-                liq_array_dict[symbol] = []
-
-            liq_array_dict[symbol].append(
-                float(token_dict["totalSupply"]["simple"])
-            )
-
-    result = {}
-    for symbol, liq_array in liq_array_dict.items():
-        result[symbol] = np.mean(liq_array)
-
-    return result
 
 def __main__():
     args = parser.parse_args()
-
 
     end_dt = iso_date_to_datetime(args.date)
     start_dt = end_dt - timedelta(days=7)
@@ -258,7 +49,7 @@ def __main__():
     start_blk = get_block_number(start_ts - args.offset)
     end_blk = get_block_number(end_ts - args.offset)
 
-    print("Getting BTC price for %s"%(end_dt))
+    print("Getting BTC price for %s" % (end_dt))
     btc_price = get_btc_price(end_dt - timedelta(seconds=args.offset))
 
     print("Scraping mAsset volumes")
@@ -274,10 +65,12 @@ def __main__():
     fp_liquidities = get_liq(start_blk, end_blk, Mode.FEEDER_POOL)
 
     masset_symbols = symbols = list(
-        set(list(masset_volumes.keys())).union(set(list(masset_liquidities.keys()))))
+        set(list(masset_volumes.keys())).union(set(list(masset_liquidities.keys())))
+    )
 
     fp_symbols = list(
-        set(list(fp_volumes.keys())).union(set(list(fp_liquidities.keys()))))
+        set(list(fp_volumes.keys())).union(set(list(fp_liquidities.keys())))
+    )
 
     masset_vol_arr = [masset_volumes[s] for s in masset_symbols]
     fp_vol_arr = [fp_volumes[s] for s in fp_symbols]
@@ -297,9 +90,9 @@ def __main__():
             fp_vol_arr[i] *= btc_price
             fp_liq_arr[i] *= btc_price
 
-    ############################################
-    # Using the logic from simple_heuristic.py #
-    ############################################
+    ###############################
+    # Using the logic from MCCP-4 #
+    ###############################
 
     top_level_dict = TOP_LEVEL_SCHEDULE[args.date]
     pools_emission = top_level_dict["pools"]
@@ -335,63 +128,78 @@ def __main__():
     bonus_vault_factor = []
 
     for supply, volume in zip(feeder_supplies, feeder_volumes):
-        bonus_feeder_factor.append(volume / supply**(1/4))
+        bonus_feeder_factor.append(volume / supply ** (1 / 4))
 
     for supply, volume in zip(masset_supplies, masset_volumes):
-        bonus_vault_factor.append(volume / supply**(1/4))
+        bonus_vault_factor.append(volume / supply ** (1 / 4))
 
     print()
-    print("Here are the weekly emissions to be paid out on %s"%(args.date))
-    print("On-chain data has been scraped with %g day offset"%(args.offset / 86400))
-    print("Total emission: %.2f MTA"%(total_emission))
-    print("Emission to native pools: %.2f MTA"%(pools_emission))
+    print("Here are the weekly emissions to be paid out on %s" % (args.date))
+    print("On-chain data has been scraped with %g day offset" % (args.offset / 86400))
+    print("Total emission: %.2f MTA" % (total_emission))
+    print("Emission to native pools: %.2f MTA" % (pools_emission))
 
     if "staking" in top_level_dict:
-        print("Emission to staking: %.2f MTA"%(top_level_dict["staking"]))
+        print("Emission to staking: %.2f MTA" % (top_level_dict["staking"]))
 
     if "MTA/WETH" in top_level_dict:
-        print("Emission to MTA/WETH pool: %.2f MTA"%(top_level_dict["MTA/WETH"]))
+        print("Emission to MTA/WETH pool: %.2f MTA" % (top_level_dict["MTA/WETH"]))
 
-    print("BTC price: %.2f USD"%(btc_price))
+    print("BTC price: %.2f USD" % (btc_price))
 
-    print("Base emission to vaults: %.2f MTA each"%vault_base_emission)
-    print("Base emission to feeder pools: %.2f MTA each"%feeder_base_emission)
+    print("Base emission to vaults: %.2f MTA each" % vault_base_emission)
+    print("Base emission to feeder pools: %.2f MTA each" % feeder_base_emission)
 
     vault_emissions = []
     for i in range(m):
-        bonus_emission = vault_emission * (1 - BASE_VAULT_EMISSION_PCT) \
-            * bonus_vault_factor[i] / sum(bonus_vault_factor)
+        bonus_emission = (
+            vault_emission
+            * (1 - BASE_VAULT_EMISSION_PCT)
+            * bonus_vault_factor[i]
+            / sum(bonus_vault_factor)
+        )
         total_vault_emission = vault_base_emission + bonus_emission
         vault_emissions.append(total_vault_emission)
 
         lur = masset_volumes[i] / masset_supplies[i]
 
-        print("%s vault - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"%(
-            masset_symbols[i],
-            masset_supplies[i] / 1e6,
-            masset_volumes[i] / 1e6,
-            lur * 100,
-            total_vault_emission,
-        ))
+        print(
+            "%s vault - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"
+            % (
+                masset_symbols[i],
+                masset_supplies[i] / 1e6,
+                masset_volumes[i] / 1e6,
+                lur * 100,
+                total_vault_emission,
+            )
+        )
 
     feeder_emissions = []
     for i in range(n):
-        bonus_emission = feeder_emission * (1 - BASE_FEEDER_EMISSION_PCT) \
-            * bonus_feeder_factor[i] / sum(bonus_feeder_factor)
+        bonus_emission = (
+            feeder_emission
+            * (1 - BASE_FEEDER_EMISSION_PCT)
+            * bonus_feeder_factor[i]
+            / sum(bonus_feeder_factor)
+        )
         total_feeder_emission = feeder_base_emission + bonus_emission
         feeder_emissions.append(total_feeder_emission)
 
         lur = feeder_volumes[i] / feeder_supplies[i]
 
-        print("Feeder %s - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"%(
-            fp_symbols[i],
-            feeder_supplies[i] / 1e6,
-            feeder_volumes[i] / 1e6,
-            lur * 100,
-            total_feeder_emission,
-        ))
+        print(
+            "Feeder %s - Liq: %.2fm USD - Vol: %.2fm USD - LUR: %.2f%% - Emission: %.2f MTA"
+            % (
+                fp_symbols[i],
+                feeder_supplies[i] / 1e6,
+                feeder_volumes[i] / 1e6,
+                lur * 100,
+                total_feeder_emission,
+            )
+        )
 
     assert abs(vault_emission + sum(feeder_emissions) - pools_emission) <= 1e-5
+
 
 if __name__ == "__main__":
     __main__()
