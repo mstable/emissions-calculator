@@ -1,3 +1,5 @@
+from helper import iso_date_to_datetime, datetime_to_timestamp
+
 TOP_LEVEL_SCHEDULE = {
     ###########################################################
     # 12,600,000 MTA to be emitted until next emission drop.  #
@@ -1348,6 +1350,19 @@ def test_total_emission():
     assert abs(year3 - 8_400_000) <= 1.0
     assert abs(year4 - 6_300_000) <= 1.0
     assert abs(year5 - 3_360_000) <= 1.0
+
+def get_most_recent_date(input_dt, offset):
+    top_level_arr = list(TOP_LEVEL_SCHEDULE.keys())
+    top_level_arr = sorted(top_level_arr, key=lambda x: x[0])
+
+    input_ts = datetime_to_timestamp(input_dt)
+
+    for date in reversed(top_level_arr):
+        ts = datetime_to_timestamp(iso_date_to_datetime(date))
+        if input_ts + offset >= ts:
+            return date
+
+    return False
 
 
 if __name__ == "__main__":

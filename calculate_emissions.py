@@ -2,7 +2,7 @@ import argparse
 import requests
 
 from scrape import *
-from top_level_schedule import TOP_LEVEL_SCHEDULE
+from top_level_schedule import TOP_LEVEL_SCHEDULE, get_most_recent_date
 
 
 example_text = """Example:
@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument(
-    "date",
+    "-d", "--date",
     type=str,
     help="The emissions will be computed for the week preceding this date.",
 )
@@ -32,14 +32,24 @@ parser.add_argument(
 def __main__():
     args = parser.parse_args()
 
-    end_dt = iso_date_to_datetime(args.date)
+    if not 0 <= args.offset <= 7 * 86400:
+        raise ValueError("Offset must be between 0 and 7 days.")
+
+    if args.date:
+        date = args.date
+    else:
+        now = datetime.utcnow()
+        date = get_most_recent_date(now, args.offset)
+
+        if not date:
+            raise ValueError("No entry found for %s in the top level emission schedule"%(now))
+
+    end_dt = iso_date_to_datetime(date)
     start_dt = end_dt - timedelta(days=7)
 
     if not start_dt.weekday() == end_dt.weekday() == 0:
         raise ValueError("Input dates are restricted to Mondays.")
 
-    if not 0 <= args.offset <= 7 * 86400:
-        raise ValueError("Offset must be between 0 and 7 days.")
 
     # Get timestamps
     start_ts = datetime_to_timestamp(start_dt)
@@ -49,8 +59,10 @@ def __main__():
     start_blk = get_block_number(start_ts - args.offset)
     end_blk = get_block_number(end_ts - args.offset)
 
-    print("Getting BTC price for %s" % (end_dt))
-    btc_price = get_btc_price(end_dt - timedelta(seconds=args.offset))
+    price_check_dt = end_dt - timedelta(seconds=args.offset)
+
+    print("Getting BTC price for %s" % (price_check_dt))
+    btc_price = get_btc_price(price_check_dt)
 
     print("Scraping mAsset volumes")
     masset_volumes = get_vol(start_blk, end_blk, Mode.MASSET)
@@ -94,7 +106,7 @@ def __main__():
     # Using the logic from MCCP-4 #
     ###############################
 
-    top_level_dict = TOP_LEVEL_SCHEDULE[args.date]
+    top_level_dict = TOP_LEVEL_SCHEDULE[date]
     pools_emission = top_level_dict["pools"]
     total_emission = sum(top_level_dict.values())
 
@@ -134,7 +146,7 @@ def __main__():
         bonus_vault_factor.append(volume / supply ** (1 / 4))
 
     print()
-    print("Here are the weekly emissions to be paid out on %s" % (args.date))
+    print("Here are the weekly emissions to be paid out on %s" % (date))
     print("On-chain data has been scraped with %g day offset" % (args.offset / 86400))
     print("Total emission: %.2f MTA" % (total_emission))
     print("Emission to native pools: %.2f MTA" % (pools_emission))
