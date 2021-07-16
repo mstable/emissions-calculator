@@ -38,7 +38,7 @@ def __main__():
     if args.date:
         date = args.date
     else:
-        now = datetime.utcnow()
+        now =  datetime.utcnow()
         date = get_most_recent_date(now, args.offset)
 
         if not date:
@@ -148,6 +148,8 @@ def __main__():
     print()
     print("Here are the weekly emissions to be paid out on %s" % (date))
     print("On-chain data has been scraped with %g day offset" % (args.offset / 86400))
+
+    print()
     print("Total emission: %.2f MTA" % (total_emission))
     print("Emission to native pools: %.2f MTA" % (pools_emission))
 
@@ -157,10 +159,20 @@ def __main__():
     if "MTA/WETH" in top_level_dict:
         print("Emission to MTA/WETH pool: %.2f MTA" % (top_level_dict["MTA/WETH"]))
 
+    print()
+
     print("BTC price: %.2f USD" % (btc_price))
 
     print("Base emission to vaults: %.2f MTA each" % vault_base_emission)
     print("Base emission to feeder pools: %.2f MTA each" % feeder_base_emission)
+    print()
+    print("Ethereum pools")
+
+    if "staking" in top_level_dict:
+        print("Staking - Emission: %.2f MTA" % (top_level_dict["staking"]))
+
+    if "MTA/WETH" in top_level_dict:
+        print("MTA/WETH pool - Emission: %.2f MTA" % (top_level_dict["MTA/WETH"]))
 
     vault_emissions = []
     for i in range(m):
@@ -211,6 +223,18 @@ def __main__():
         )
 
     assert abs(vault_emission + sum(feeder_emissions) - pools_emission) <= 1e-5
+
+    print()
+    print("Polygon")
+
+    if "p-imUSD" in top_level_dict:
+        print("imUSD vault - Emission: %.2f MTA" % (top_level_dict["p-imUSD"]))
+
+    if "p-MTA" in top_level_dict:
+        print("MTA balancer pool - Emission: %.2f MTA" % (top_level_dict["p-MTA"]))
+
+    if "p-frax" in top_level_dict:
+        print("fpFrax - Emission: %.2f MTA" % (top_level_dict["p-frax"]))
 
 
 if __name__ == "__main__":

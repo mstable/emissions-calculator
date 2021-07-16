@@ -1,6 +1,6 @@
 # Subgraph URLs
-PROTOCOL_URL = "https://api.thegraph.com/subgraphs/name/mstable/mstable-protocol"
-FEEDER_POOL_URL = "https://api.thegraph.com/subgraphs/name/mstable/mstable-feeder-pools"
+PROTOCOL_URL = "https://api.thegraph.com/subgraphs/name/mstable/mstable-protocol-staging"
+FEEDER_POOL_URL = "https://api.studio.thegraph.com/query/948/mstable-feeder-pools-and-vaults/v0.0.5"
 
 WEIGHTED_AVERAGE_SAMPLES = 500
 
