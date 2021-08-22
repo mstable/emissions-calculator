@@ -124,10 +124,10 @@ TOP_LEVEL_SCHEDULE = {
     "2021-08-23": {
         "MTA/WETH": 5000,
         "staking": 40_000,
-        "p-imUSD": 20_832,
+        "p-imUSD": 17_360, # 6 weeks in, 6 weeks remaining. Previous week double spend, reduce proportionately
         "p-MTA": 15_000,
         "p-frax": 10_000,
-        "pools": 242_308 - 5000 - 40_000 - 20_832 - 15_000 - 10_000,
+        "pools": 238_836 - 5000 - 40_000 - 17_360 - 15_000 - 10_000,
     },
     ## MCCP-8 Finishes here
     "2021-08-30": {
