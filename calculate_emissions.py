@@ -153,12 +153,6 @@ def __main__():
     print("Total emission: %.2f MTA" % (total_emission))
     print("Emission to native pools: %.2f MTA" % (pools_emission))
 
-    if "staking" in top_level_dict:
-        print("Emission to staking: %.2f MTA" % (top_level_dict["staking"]))
-
-    if "MTA/WETH" in top_level_dict:
-        print("Emission to MTA/WETH pool: %.2f MTA" % (top_level_dict["MTA/WETH"]))
-
     print()
 
     print("BTC price: %.2f USD" % (btc_price))
@@ -168,8 +162,11 @@ def __main__():
     print()
     print("Ethereum pools")
 
-    if "staking" in top_level_dict:
-        print("Staking - Emission: %.2f MTA" % (top_level_dict["staking"]))
+    if "staking-v2-mta" in top_level_dict:
+        print("Staking-v2-MTA - Emission: %.2f MTA" % (top_level_dict["staking-v2-mta"]))
+
+    if "staking-v2-bpt" in top_level_dict:
+        print("Staking-v2-BPT - Emission: %.2f MTA" % (top_level_dict["staking-v2-bpt"]))
 
     if "MTA/WETH" in top_level_dict:
         print("MTA/WETH pool - Emission: %.2f MTA" % (top_level_dict["MTA/WETH"]))
