@@ -185,8 +185,12 @@ TOP_LEVEL_SCHEDULE = {
     ## PDP 28: FINISHES HERE
     "2021-10-11": {
         "MTA/WETH": 5000,
-        "staking": 40_000,
-        "pools": 237_500 - 5000 - 40_000,
+        "staking-v2-mta": 32_500,
+        "staking-v2-bpt": 20_000,
+        "p-imUSD": 17_360,
+        "p-MTA": 15_000,
+        "p-frax": 10_000,
+        "pools": 207_692 - 5000 - 32_500 - 20_000 - 17_360 - 15_000 - 10_000,
     },
     "2021-10-18": {
         "MTA/WETH": 5000,
