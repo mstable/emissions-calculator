@@ -84,6 +84,9 @@ def __main__():
         set(list(fp_volumes.keys())).union(set(list(fp_liquidities.keys())))
     )
 
+    deprecated = TOP_LEVEL_SCHEDULE[date]['skip']
+    fp_symbols = list(filter(lambda x: x not in deprecated, fp_symbols))
+
     masset_vol_arr = [masset_volumes[s] for s in masset_symbols]
     fp_vol_arr = [fp_volumes[s] for s in fp_symbols]
 
@@ -107,6 +110,7 @@ def __main__():
     ###############################
 
     top_level_dict = TOP_LEVEL_SCHEDULE[date]
+    top_level_dict.pop("skip")
     pools_emission = top_level_dict["pools"]
     total_emission = sum(top_level_dict.values())
 
