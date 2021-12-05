@@ -130,8 +130,10 @@ def __main__():
     m = len(masset_supplies)
     n = len(feeder_supplies)
 
+
     if m == 0 or n == 0:
         raise Exception("There needs to be at least 1 feeder pool and 1 mAsset.")
+
 
     vault_emission = pools_emission * (1 - FEEDER_EMISSION_PCT)
     feeder_emission = pools_emission * FEEDER_EMISSION_PCT
@@ -183,6 +185,7 @@ def __main__():
             * bonus_vault_factor[i]
             / sum(bonus_vault_factor)
         )
+        
         total_vault_emission = vault_base_emission + bonus_emission
         vault_emissions.append(total_vault_emission)
 
@@ -207,9 +210,10 @@ def __main__():
             * bonus_feeder_factor[i]
             / sum(bonus_feeder_factor)
         )
-        total_feeder_emission = feeder_base_emission + bonus_emission
-        feeder_emissions.append(total_feeder_emission)
 
+        total_feeder_emission = feeder_base_emission + bonus_emission
+            
+        feeder_emissions.append(total_feeder_emission)
         lur = feeder_volumes[i] / feeder_supplies[i]
 
         print(
@@ -222,6 +226,13 @@ def __main__():
                 total_feeder_emission,
             )
         )
+
+    print(
+        "Feeder fPmUSD/RAI - Emission: %.2f MTA"
+        % (
+            top_level_dict["fPmUSD/RAI"]
+        )
+    )
 
     assert abs(vault_emission + sum(feeder_emissions) - pools_emission) <= 1e-5
 
