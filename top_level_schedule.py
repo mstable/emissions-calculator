@@ -265,11 +265,12 @@ TOP_LEVEL_SCHEDULE = {
         "Visor-Finance": 5000,
         "staking-v2-mta": 32_500,
         "staking-v2-bpt": 20_000,
+        "fPmUSD/RAI": 1_000,
         "p-imUSD": 15_000,
         "p-MTA": 15_000,
         "p-frax": 10_000,
-        "pools": 166_154 - 5000 - 32_500 - 20_000 - 15_000 - 15_000 - 10_000,
-        "skip": ["fPmBTC/TBTC"]
+        "pools": 166_154 - 5000 - 32_500 - 20_000 - 15_000 - 15_000 - 10_000 - 1_000,
+        "skip": ["fPmBTC/TBTC", "fPmUSD/FEI", "fPmUSD/RAI"]
     },
     "2021-12-13": {
         "Visor-Finance": 5000,
